@@ -635,8 +635,6 @@ def main():
     max_tmrca     = args.max_tmrca/args.gen_time # TMRCA of all men in phylogeny (in generations)
     min_node_conf = 0         # Remove nodes with conf < threshold
 
-    print(max_tmrca)
-
     # Create the read count distribution
     read_count_dist = create_read_count_distribution(args)
 
@@ -689,7 +687,7 @@ def main():
                                                  str_gts, min_str, max_str, node_lst, 
                                                  min_mu=0.00001, max_mu=0.05, 
                                                  min_beta=0.0,    max_beta=0.75, 
-                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=20)
+                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=3)
                 output.write("%s\t%f\t%f\t%f\t%f\t%d\t%s\t%d\n"%
                              (locus, opt_res.x[0], opt_res.x[1], opt_res.x[2], 
                               opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(str_gts)))
@@ -727,7 +725,7 @@ def main():
                                                  str_gts, min_str, max_str, node_lst, 
                                                  min_mu=0.00001, max_mu=0.05, 
                                                  min_beta=0.0,    max_beta=0.75, 
-                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=20)
+                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=3)
                 output.write("%s\t%f\t%f\t%f\t%f\t%d\t%s\t%d\n"%
                              (locus, opt_res.x[0], opt_res.x[1], opt_res.x[2], 
                               opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(str_gts)))
@@ -859,7 +857,7 @@ def main():
                                                  simulated_gts,  min_str, max_str, node_lst, 
                                                  min_mu=0.00001, max_mu=0.05, 
                                                  min_beta=0.0,   max_beta=0.75, 
-                                                 min_pgeom=0.5,  max_pgeom=1.0, num_iter=1)
+                                                 min_pgeom=0.5,  max_pgeom=1.0, num_iter=3)
 
                 true_up, true_down, true_pgeom = pcr_stutter_model.get_prob_up(), pcr_stutter_model.get_prob_down(), pcr_stutter_model.get_pgeom()
 

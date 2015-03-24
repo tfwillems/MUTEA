@@ -5,7 +5,7 @@ from scipy.stats import geom
 
 min_iter        = 40
 max_iter        = 1000
-min_eff_cov     = 100
+min_eff_cov     = 1
 CONVERGED       = 0
 COVERAGE_LIMIT  = 1
 ITERATION_LIMIT = 2
