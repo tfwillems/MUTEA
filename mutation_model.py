@@ -3,13 +3,6 @@ from scipy.stats import norm, geom
 from numpy.linalg import matrix_power
 from numpy import linalg as LA
 
-'''
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-'''
-
 class OUGeomSTRMutationModel:
     def __init__(self, p_geom, mu, beta, allele_range, max_step=None):
         if p_geom <= 0.0 or p_geom > 1:
@@ -46,7 +39,6 @@ class OUGeomSTRMutationModel:
         
         # Based on properties of exact geometric distribution
         self.step_size_variance = (2-p_geom)/(p_geom**2)
-
 
     def init_transition_matrix(self):
         max_step     = self.max_step
@@ -116,88 +108,3 @@ class OUGeomSTRMutationModel:
         axes[len(x_vals)/2].set_xlabel("STR Step Size")
         output_pdf.savefig(fig)
         plt.close(fig)
-
-def main():
-    numpy.set_printoptions(formatter={'float': '{: 0.3f}'.format}, threshold=numpy.nan, linewidth=200)
-    allele_range = 5
-    start_allele = 0
-    mu           = 0.001
-    beta         = 0.4
-    p_geom       = 1.0
-    mut_model = OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-    print(mut_model.trans_matrix**10000)
-    print(mut_model.get_forward_str_probs(0, 1), 0, 1.0)
-    print(mut_model.P)
-    return
-    
-
-    
-    allele_range = 12
-    mu           = 0.0007909675
-    beta         = 0.2466938013
-    p_geom       = 0.9820623995
-    
-   
-    #beta   = 0.15
-    #p_geom = 0.5
-    
-    mu        = 1.0
-    p_geom    = 0.9
-    pp = PdfPages("step_profiles.pdf")
-    for beta in [0.0, 0.1, 0.25]: 
-        mut_model = OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-        x_vals = [-3, 0, 3]
-        mut_model.plot_transition_probabilities(x_vals, pp, window_width=5)
-    pp.close()
-    return
-
-
-    for tmrca in [1000]: #[1, 10, 100, 1000, 10000]:
-        
-
-        mut_model.compute_forward_matrix(tmrca)    
-        f1_probs = numpy.clip(numpy.real(mut_model.get_forward_str_probs(start_allele, tmrca)), 0, 1.0)
-        print(mut_model.forward_matrix)
-        mut_model.forward_matrix = mut_model.trans_matrix**tmrca
-        print(mut_model.forward_matrix)
-        f2_probs = numpy.clip(numpy.real(mut_model.get_forward_str_probs(start_allele, tmrca)), 0, 1.0)
-        #print(f1_probs)
-        #print(f2_probs)
-    return
-    
-
-    mus    = [0.01]
-    betas  = numpy.linspace(0,   1.0, 100)
-    pgeoms = numpy.linspace(0.5, 1.0, 80)
-    X,Y = numpy.meshgrid(betas, pgeoms)
-
-    log_10 = lambda x: numpy.log(x)/numpy.log(10)
-
-    fig = plt.figure()
-    for mu in mus:
-        max_z, min_z = [], []
-        for beta in betas:
-            for p_geom in pgeoms:
-                mut_model = OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-                mut_model.compute_forward_matrix(1000)
-                min_val = numpy.min(mut_model.forward_matrix)
-                max_val = numpy.max(mut_model.forward_matrix)
-                #z.append(log_10(log_10(max_val)))
-                max_z.append(max_val > 1)
-                min_z.append(min_val < -1e-5)
-        max_Z = numpy.array(max_z).reshape((len(betas), len(pgeoms)))
-        min_Z = numpy.array(min_z).reshape((len(betas), len(pgeoms)))
-        fig = plt.figure()
-        ax1  = fig.add_subplot(121)
-        ax1.imshow(max_Z)
-        ax2 = fig.add_subplot(122)
-        ax2.imshow(min_Z)
-        #plt.contourf(X, Y, Z)
-        #plt.colorbar()
-        plt.show()
-
-
-
-if __name__ == "__main__":
-    main()
-
