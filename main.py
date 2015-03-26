@@ -1,4 +1,3 @@
-
 import dendropy
 from dendropy import treecalc
 import collections
@@ -25,18 +24,14 @@ import os
 from   mutation_model import OUGeomSTRMutationModel
 import read_powerplex
 import read_str_vcf
-
 import stutter_em
 import geom_stutter_em
-
 import stutter_model
 import genotypers
 import simulate_strs
-
 import mutation_model
 import matrix_optimizer
 import stutter_info
-
 
 # Useful for studying time consumption
 #from pycallgraph import PyCallGraph
@@ -217,7 +212,6 @@ def determine_total_loglikelihood(tree, node_lst, allele_range, mut_model, gt_pr
                     print("\tNode likelihoods = %s"%(str(comb_probs)))
 
     # Overall likelihood corresponds to average of root probabilities (uniform prior)
-    # TO DO: Consider alternative prior?
     root_likelihoods  = node_likelihoods[root_id]
     if debug:
         print("\tRoot node likelihoods = %s"%(str(root_likelihoods)))
@@ -297,172 +291,6 @@ def plot_str_probs(mut_model, start_allele, tmrcas, output_pdf, min_x=-50, max_x
     ax.legend(title=r"$N_{generations}$")
     output_pdf.savefig(fig)
     plt.close(fig)
-
-
-def est_mut_rate(tree, pdm, step_size_variance, len_to_tmrca, str_gts, max_tmrca):
-    x,y = [],[]
-    for i, t1 in enumerate(tree.taxon_set):
-        str_t1 = str_gts[t1.label]
-        for t2 in tree.taxon_set[i+1:]:
-            str_t2 = str_gts[t2.label]
-            dist = pdm(t1,t2)/2.0*len_to_tmrca
-            asd  = (str_t1-str_t2)**2
-            if dist <= max_tmrca:
-                x.append(dist)
-                y.append(asd)
-    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x,y)
-    est_mut_rate = slope/(2.0*step_size_variance)
-    return est_mut_rate
-
-def calc_asd_stats(tree, pdm, len_to_tmrca, str_gts, tmrca_bins):
-    x,y = [],[]
-    for i, t1 in enumerate(tree.taxon_set):
-        str_t1 = str_gts[t1.label]
-        for t2 in tree.taxon_set[i+1:]:
-            str_t2 = str_gts[t2.label]
-            dist = pdm(t1,t2)/2.0*len_to_tmrca
-            asd  = (str_t1-str_t2)**2
-            x.append(dist)
-            y.append(asd)
-    binned_asds = [[] for _ in xrange(len(tmrca_bins)-1)]
-    bin_indices = numpy.digitize(x, tmrca_bins)
-    for i in xrange(len(x)):
-        if bin_indices[i]-1 < len(binned_asds):
-            binned_asds[bin_indices[i]-1].append(y[i])
-    bin_centers = map(lambda x: 0.5*(tmrca_bins[x]+tmrca_bins[x+1]), xrange(len(tmrca_bins)-1))
-    means   = []
-    stdevs  = []
-    centers = []
-    for i in xrange(len(binned_asds)):
-        if len(binned_asds[i]) != 0:
-            means.append(numpy.mean(binned_asds[i]))
-            stdevs.append(numpy.std(binned_asds[i]))
-            centers.append(bin_centers[i])
-    return means, stdevs, centers
-
-
-def plot_asd(tree, pdm, step_size_variance, len_to_tmrca, str_gts, tmrca_bins, mu, output_pdf):
-    x,y = [],[]
-    for i, t1 in enumerate(tree.taxon_set):
-        str_t1 = str_gts[t1.label]
-        for t2 in tree.taxon_set[i+1:]:
-            str_t2 = str_gts[t2.label]
-            dist   = pdm(t1,t2)/2.0*len_to_tmrca
-            asd    = (str_t1-str_t2)**2
-            x.append(dist)
-            y.append(asd)
-    
-    # Plot ASD vs. TMRCA for all sample pairs
-    fig = plt.figure()
-    ax  = fig.add_subplot(111)
-    _, _, _, img = ax.hist2d(x, y, bins=[100,200], cmap='YlOrRd', norm=LogNorm())
-    ax.set_xlabel("TMRCA (generations)")
-    ax.set_ylabel(r"ASD $(Repeat^2)$")
-    plt.colorbar(img)
-    output_pdf.savefig(fig)
-    plt.close(fig)
-
-    # TO DO: Plot ASD vs. TMRCA using a subset of sample pairs
-
-    # Plot mean ASD vs. TMRCA using all sample pairs
-    bin_indices = numpy.digitize(x, tmrca_bins)
-    binned_asds = [[] for _ in xrange(len(tmrca_bins)-1)]
-    for i in xrange(len(x)):
-        if bin_indices[i]-1 < len(binned_asds):
-            binned_asds[bin_indices[i]-1].append(y[i])
-    bin_centers = map(lambda x: 0.5*(tmrca_bins[x]+tmrca_bins[x+1]), xrange(len(tmrca_bins)-1))
-
-    means   = []
-    stdevs  = []
-    centers = []
-    for i in xrange(len(binned_asds)):
-        if len(binned_asds[i]) != 0:
-            means.append(numpy.mean(binned_asds[i]))
-            stdevs.append(numpy.std(binned_asds[i]))
-            centers.append(bin_centers[i])
-    fig    = plt.figure()
-    ax     = fig.add_subplot(111)
-    ax.errorbar(centers, y=means, yerr=stdevs)
-    ax.set_xlabel("TMRCA (generations)")
-    ax.set_ylabel(r"ASD $(Repeat^2)$")
-    ax.plot(centers, map(lambda x: 2*x*mu*step_size_variance, centers), '--')
-
-    # Determine slope using short TMRCAs and set as title
-    max_tmrca = 500
-    filt_x,filt_y = map(list, zip(*filter(lambda pair: pair[0] <= max_tmrca, zip(x, y))))
-    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(filt_x,filt_y)
-    est_mut_rate = slope/(2.0*step_size_variance) 
-    ax.set_title(r"$\mu=%f, \hat \mu=%f$"%(mu, est_mut_rate))
-    output_pdf.savefig(fig)
-    plt.close(fig)
-
-def compute_pairwise_tmrcas(tree):
-    pdm = treecalc.PatristicDistanceMatrix(tree)
-    return pdm
-
-def assess_mut_rates(tree, pdm, max_tmrca, len_to_tmrca, mu_vals, beta_vals, geom_vals, niter, tmrca_bins, output_pdf, band_percentile=2.5):
-    nopts       = len(mu_vals)*len(beta_vals)*len(geom_vals)
-    est_rates   = [[] for _ in xrange(nopts)]
-    xlabels     = []
-    model_index = 0
-    for mu in mu_vals:
-        for beta in beta_vals:
-            for p_geom in geom_vals:
-                print("Assessing estimates for mu=%f, beta=%f, p=%f"%(mu, beta, p_geom))
-                print("Determining allele range")
-                allele_range, max_step = determine_allele_range(max_tmrca, mu, beta, p_geom, -5, 5)
-                print("Using an allele range of %d and a max step of %d"%(allele_range, max_step))
-                mut_model = OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-                plot_str_probs(mut_model, 0, [1, 10, 25, 100, 1000, 10000], output_pdf)
-
-                xlabels.append("%.0e"%(mu) + "\n" + "%.0e"%(beta) + "\n" + "%.0e"%(p_geom))
-                mean_sets  = None
-                stdev_sets = None
-                centers    = None
-
-                for i in xrange(niter):
-                    print("Simulating STR genotypes")
-                    simulated_gts = simulate_strs(tree, mut_model, len_to_tmrca, convert_to_likelihoods=False, debug=False)
-                    print("Completed STR genotype simulation")
-                    est_rates[model_index].append(est_mut_rate(tree, pdm, len_to_tmrca, simulated_gts, 500))
-
-                    means, stdevs, centers = calc_asd_stats(tree, pdm, len_to_tmrca, simulated_gts, tmrca_bins)
-                    if mean_sets is None:
-                        mean_sets  = [[] for _ in xrange(len(centers))]
-                        stdev_sets = [[] for _ in xrange(len(centers))]
-                        
-                    for i in xrange(len(means)):
-                        mean_sets[i].append(means[i])
-                        stdev_sets[i].append(stdevs[i])
-                         
-                # Plot mean profiles
-                fig = plt.figure()
-                ax  = fig.add_subplot(111)
-                lower_bound = map(lambda x: numpy.percentile(x, band_percentile), mean_sets)
-                upper_bound = map(lambda x: numpy.percentile(x, 100-band_percentile), mean_sets)
-                means_line  = map(numpy.mean, mean_sets)
-                ax.plot(centers, means_line, color='black', ls='--')
-                ax.fill_between(centers, lower_bound, upper_bound, facecolor='yellow', alpha=0.5)
-                ax.plot(centers, map(lambda x: 2*x*mu, centers), color='red', ls='--')
-                ax.set_xlabel('TMRCA(generations)')
-                ax.set_ylabel('ASD')
-                ax.grid()
-                ax.set_title(r"Average ASD Profiles for $\mu=%.0e$, $\beta=%.0e$, $p_{geom}=%.0e$"%(mu, beta, p_geom))
-                output_pdf.savefig(fig)
-                plt.close(fig)
-                model_index += 1
-
-    est_rates = map(numpy.array, est_rates)
-    fig       = plt.figure()
-    ax        = fig.add_subplot(111)
-    ax.boxplot(est_rates)    
-    ax.set_xticklabels(xlabels)
-    ax.tick_params(axis='x', which='major', labelsize=6)
-    output_pdf.savefig(fig)
-    ax.set_yscale('log')
-    output_pdf.savefig(fig)
-    plt.close(fig)
-
 
 prev_allele_range = 1
 
@@ -554,7 +382,6 @@ def run_jackknife_procedure(tree, len_to_tmrca, max_tmrca,
             os.fsync(output.fileno())
     output.close()
 
-
 def check_args(args, arg_lst, option):
     var_dict = vars(args)
     for arg in arg_lst:
@@ -589,47 +416,47 @@ def create_read_count_distribution(args):
     return dist
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--tree",      required=True,  dest="tree",      type=str)
-    parser.add_argument("--out",       required=True,  dest="out",       type=str)
-    parser.add_argument("--vcf",       required=False, dest="vcf",       type=str,   default=None)
-    parser.add_argument("--powerplex", required=False, dest="powerplex", type=str,   default=None)   
-    parser.add_argument("--mu",        required=False, dest="mu",        type=float, default=None)
-    parser.add_argument("--beta",      required=False, dest="beta",      type=float, default=None)
-    parser.add_argument("--pgeom",     required=False, dest="p_geom",    type=float, default=None)
-    parser.add_argument("--nsamp",     required=False, dest="nsamp",     type=int,   default=None)
-    parser.add_argument("--niter",     required=False, dest="niter",     type=int,   default=None)
-    parser.add_argument("--locus",     required=False, dest="locus",     type=str,   default=None)
-    parser.add_argument("--loc_range", required=False, dest="loc_range", type=str,   default=None)
-    parser.add_argument("--hapgroups", required=False, dest="hapgroups", type=str,   default=None)
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--tree",  required=True,  dest="tree",      type=str,                 help="File containing phylogeny for samples in newick format")
+    parser.add_argument("--out",   required=True,  dest="out",       type=str,                 help="Prefix for all output files")
+    parser.add_argument("--vcf",   required=False, dest="vcf",       type=str,   default=None, help="VCF file containing STR genotypes (and potentially read counts in ALLREADS FORMat field)")
+    parser.add_argument("--pplex", required=False, dest="powerplex", type=str,   default=None, help="File containg powerplex STR genotypes")   
 
-    # Various analysis options
-    parser.add_argument("--calc_mut_rates",     required=False, action="store_true", default=False)
-    parser.add_argument("--calc_stutter_probs", required=False, action="store_true", default=False)
-    parser.add_argument("--plot_ss",            required=False, action="store_true", default=False)
-    parser.add_argument("--jackknife",          required=False, action="store_true", default=False)
-    parser.add_argument("--sim_and_est",        required=False, action="store_true", default=False)
-    parser.add_argument("--sim_stutter_em",     required=False, action="store_true", default=False)
+    # Options to control the edge length -> # generation scaling factor
+    parser.add_argument("--max_tmrca", required=False, type=int, dest="max_tmrca", default=175000, help="")
+    parser.add_argument("--gen_time",  required=False, type=int, dest="gen_time",  default=30,     help="")
 
-    # Options to control the number of observed reads per sample for simulate STR genotypes
-    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str, default="1,2,3")
-    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str, default="65,25,10")
-
-    # Options to distort observed reads using PCR stutter for simulated STR genotypes
-    parser.add_argument("--stutter_geom", required=False, dest="stutter_geom", type=float, default=1.0)
-    parser.add_argument("--stutter_dec",  required=False, dest="stutter_dec",  type=float, default=0.0)
-    parser.add_argument("--stutter_inc",  required=False, dest="stutter_inc",  type=float, default=0.0)
-    
-    # Options to control how genotype posteriors are computed for simulated STR genotypes
-    parser.add_argument("--genotyper", required=False, dest="genotyper", type=str, default="EXACT")
+    # Options used for both the jackknife and simulations
+    parser.add_argument("--nsamp",     required=False, dest="nsamp",     type=int,   default=None, help="")
+    parser.add_argument("--niter",     required=False, dest="niter",     type=int,   default=None, help="")
 
     # Option to use the read counts in the VCF instead of the genotype posteriors
     # Computes the genotype posteriors using data from the specified stutter model file and the read counts
-    parser.add_argument("--use_read_counts", required=False, dest="use_read_counts", type=str, default=None)
+    parser.add_argument("--use_read_counts", required=False, dest="use_read_counts", type=str, default=None, help="")
 
-    # Options to control the edge length -> # generation scaling factor
-    parser.add_argument("--max_tmrca", required=False, type=int, dest="max_tmrca", default=175000)
-    parser.add_argument("--gen_time",  required=False, type=int, dest="gen_time",  default=30)
+    parser.add_argument("--calc_mut_rates", required=False, action="store_true", default=False, help="")
+    parser.add_argument("--loc_range",      required=False, dest="loc_range", type=str,   default=None, help="")
+    parser.add_argument("--hapgroups",      required=False, dest="hapgroups", type=str,   default=None, help="")
+
+    parser.add_argument("--calc_stutter_probs", required=False, action="store_true", default=False, help="")
+
+    parser.add_argument("--jackknife", required=False, action="store_true",   default=False, help="")
+    parser.add_argument("--locus",     required=False, dest="locus", type=str, default=None, help="")
+
+
+
+    parser.add_argument("--plot_ss",           required=False, action="store_true",              default=False,    help="")
+    parser.add_argument("--sim_stutter_em",    required=False, action="store_true",              default=False,    help="Simulates STRs down the phylogeny using the provided mutation model.\nGenerates observed reads for each sample using the read count distributions and the stutter model parameters.\nFinally, estimates the stutter model parameters using the phylogeny and observed reads")
+    parser.add_argument("--sim_and_est",       required=False, action="store_true",              default=False,    help="Performs the same initial procedure as --sim_stutter_em but proceeds by using the specified genotyper,\nphylogeny and observed read counts to estimate the underlying mutation model")
+    parser.add_argument("--mu",                required=False, dest="mu",            type=float, default=None,     help="Mutation rate for simulating STRs (mutations/generation)")
+    parser.add_argument("--beta",              required=False, dest="beta",          type=float, default=None,     help="Length constraint for simulating STRs")
+    parser.add_argument("--pgeom",             required=False, dest="p_geom",        type=float, default=None,     help="Geometric parameter for simulating STRs")
+    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str, default="1,2,3",    help="Categories of observed reads per sample. Default=1,2,3")
+    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str, default="65,25,10", help="Frequency for each observed read count. Default=65,25,10")
+    parser.add_argument("--stutter_geom",      required=False, dest="stutter_geom",  type=float, default=1.0,      help="Geometric parameter for stutter model. Default=1.0")
+    parser.add_argument("--stutter_dec",       required=False, dest="stutter_dec",   type=float, default=0.0,      help="Probability that stutter increases the number of observed repeats in a read. Default=0.0")
+    parser.add_argument("--stutter_inc",       required=False, dest="stutter_inc",   type=float, default=0.0,      help="Probability that stutter decreases the number of observed repeats in a read. Default=0.0")
+    parser.add_argument("--genotyper",         required=False, dest="genotyper",     type=str,   default="EXACT",  help="Genotyper to use to compute STR posteriors from simulated read counts. Options = (EXACT, EXACT_STUTTER, EST_STUTTER, FRACTION). Default = EXACT ")
     
     args = parser.parse_args()
     max_tmrca     = args.max_tmrca/args.gen_time # TMRCA of all men in phylogeny (in generations)
@@ -640,13 +467,11 @@ def main():
 
     # Read and prune tree based on node confidences
     tree,haplogroups = read_tree(args.tree, min_node_conf)
-    pdm              = compute_pairwise_tmrcas(tree)    
     node_lst         = compute_node_order(tree)
 
     # Determinine tree depth range
     min_depth,max_depth = tree_depths(tree)
-    print("Minimum tree depth = %f"%(min_depth))
-    print("Maximum tree depth = %f"%(max_depth))
+    print("Minimum tree depth = %f, Maximum tree depth = %f"%(min_depth, max_depth))
 
     # Calculate conversion from edge length to tmrca
     len_to_tmrca = max_tmrca/max_depth
@@ -826,7 +651,7 @@ def main():
         res_out.close()
 
     if args.sim_and_est:
-        check_args(args, ["mu", "beta", "p_geom", "niter"], "sim_and_est")
+        check_args(args, ["mu", "beta", "p_geom", "niter", "nsamp"], "sim_and_est")
 
         # Construct the PCR stutter model, genotyper and read count distribution
         pcr_stutter_model = stutter_model.GeomStutterModel(args.stutter_geom, args.stutter_dec, args.stutter_inc, tolerance=10**-6)
@@ -875,7 +700,7 @@ def main():
         res_out.close()
 
     if args.sim_stutter_em:
-        check_args(args, ["mu", "beta", "p_geom", "niter"], "sim_stutter_em")
+        check_args(args, ["mu", "beta", "p_geom", "niter", "nsamp"], "sim_stutter_em")
 
         # Construct the PCR stutter model
         pcr_stutter_model = stutter_model.GeomStutterModel(args.stutter_geom, args.stutter_dec, args.stutter_inc, tolerance=10**-6)
@@ -912,31 +737,6 @@ def main():
             res_out.flush()
             os.fsync(res_out.fileno())
         res_out.close()
-
     
-    if False:
-        mu_vals    = [0.01, 0.0075, 0.005, 0.0025, 0.001, 0.00075, 0.0005, 0.00025, 0.0001]
-        beta_vals  = [0,      0.05,   0.1,   0.25]
-        pgeom_vals = [0.5   , 0.75,   0.9,      1]
-        niter      = 100
-        tmrca_bins = numpy.arange(0, 5001, 100)
-        assess_mut_rates(tree, pdm, max_tmrca, len_to_tmrca, mu_vals, beta_vals, sigma_vals, niter, tmrca_bins, pp)
-    
-    if False:
-        est_rates = []
-        for i in xrange(100):
-            print("Simulating STR genotypes")
-            simulated_gts = simulate_strs(tree, mut_model, len_to_tmrca, convert_to_likelihoods=False, debug=False)
-            print("Completed STR genotype simulation")            
-            est_rates.append(est_mut_rate(tree, pdm, len_to_tmrca, simulated_gts, 500))
-            continue
-
-            print("Plotting ASD vs. TMRCA")
-            plot_asd(tree, pdm, len_to_tmrca, simulated_gts, tmrca_bins, mu, pp)
-            print("Plotting completed")
-        print(est_rates)
-
-
-
 if __name__ == "__main__":
     main()
