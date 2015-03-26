@@ -33,7 +33,8 @@ class StutterModel:
         # Compute log-likelihood for each allele
         gts,LLs = [],[]
         for gt in log_gt_priors.keys():
-            LL = log_gt_priors[gt]
+            #LL = log_gt_priors[gt]
+            LL  = 0 # Ignore priors when computing posteriors
             for size,count in read_counts.items():
                 stutter_size = size - gt
                 if stutter_size not in self.LL_stutter_dict:
