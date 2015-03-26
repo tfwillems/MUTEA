@@ -1,10 +1,3 @@
-'''
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-'''
-
 import collections
 import numpy
 import sys
@@ -32,7 +25,6 @@ def read_genotypes(input_file, conv_to_likelihood=False):
                 except ValueError:
                     print("Using missing genotype for %s"%tokens[3+j])
     data.close()
-
 
     for marker in str_genotypes:
         # Determine 'center' of distribution, which by default is the median allele
@@ -72,13 +64,3 @@ def plot_str_distribution(str_gts, locus_name, output_pdf):
     ax.yaxis.set_ticks_position('left')
     output_pdf.savefig(fig)
     plt.close(fig)
-
-def main():
-    str_genotype_dict = read_genotypes(sys.argv[1])
-    pp                = PdfPages(sys.argv[2])
-    for locus in str_genotype_dict:
-        plot_str_distribution(str_genotype_dict[locus], locus, pp)
-    pp.close()
-
-if __name__ == "__main__":
-    main()

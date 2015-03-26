@@ -1,8 +1,6 @@
 import numpy
 import mutation_model
 
-from numpy import linalg as LA
-
 def factor_power_two(val):
     power   = 0
     factors = []
@@ -62,28 +60,3 @@ class MATRIX_OPTIMIZER:
         vec[start_allele-self.min_n] = 1
         return numpy.array(self.get_transition_matrix(num_generations).dot(vec).transpose())[0]
 
-
-def main():
-    allele_range = 3
-    start_allele = 0
-    mu           = 0.0001
-    beta         = 0.5
-    p_geom       = 1.0
-    mut_model    = mutation_model.OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-    optimizer    = MATRIX_OPTIMIZER(mut_model.trans_matrix, mut_model.min_n)
-    optimizer.precompute_results()
-    other_model  = mutation_model.OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-    
-    numpy.set_printoptions(precision=4, linewidth=150)
-    for i in [128, 156, 240]:
-        print(i)
-        print(optimizer.get_transition_matrix(i))
-        other_model.compute_forward_matrix(i, allow_bigger_err=True)
-        print(other_model.forward_matrix)
-        print(other_model.get_forward_str_probs(0, i))
-        print(optimizer.get_forward_str_probs(0, i))
-
-
-
-if __name__ == "__main__":
-    main()

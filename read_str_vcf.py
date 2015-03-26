@@ -3,7 +3,6 @@ import genotypers
 import operator
 import vcf
 
-
 # Returns a dictionary mapping each sample name to a dictionary 
 # containing the observed repeat lengths and counts for that sample's reads
 def get_str_read_counts(vcf_reader):
@@ -109,8 +108,6 @@ def get_str_gts(vcf_reader):
                     sample_probs[(len(record.alleles[i])-center)/motif_len] = homoz_Ls[index]*1.0/tot_homoz_L
                 gt_probs[sample.sample] = sample_probs
     return True,gt_probs,min_str,max_str,(record.CHROM+":"+str(record.POS))
-
-
 
 def compute_median(values, counts):
     total_count = sum(counts)
