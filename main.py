@@ -66,7 +66,7 @@ def read_tree(input_file, min_conf):
             haplogroup_counts[hapgroup] += 1
 
     # Remove samples with unusual distance from root
-    for label in ["HG02982", "HG01890"]:
+    for label in ["HG02982", "HG01890", "HG02040", "HG00628", "NA19384"]:
         tree.prune_subtree(tree.find_node_with_taxon_label(label))
 
     # Count number of leaves post pruning
@@ -87,11 +87,13 @@ def max_edge_length(tree):
 def tree_depths(tree):
     min_depth = 10000000000
     max_depth = 0
+    depths    = []
     for node in tree.leaf_nodes():
         dist = node.distance_from_root()
         min_depth = min(min_depth, dist)
         max_depth = max(max_depth, dist)
-    return min_depth,max_depth
+        depths.append(dist)
+    return min_depth,max_depth,numpy.median(depths)
 
 def determine_allele_range(max_tmrca, mu, beta, p_geom,
                            min_obs_allele, max_obs_allele,
@@ -419,45 +421,66 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--tree",  required=True,  dest="tree",      type=str,                 help="File containing phylogeny for samples in newick format")
     parser.add_argument("--out",   required=True,  dest="out",       type=str,                 help="Prefix for all output files")
-    parser.add_argument("--vcf",   required=False, dest="vcf",       type=str,   default=None, help="VCF file containing STR genotypes (and potentially read counts in ALLREADS FORMat field)")
     parser.add_argument("--pplex", required=False, dest="powerplex", type=str,   default=None, help="File containg powerplex STR genotypes")   
+    parser.add_argument("--vcf",   required=False, dest="vcf",       type=str,   default=None,
+                        help="VCF file containing STR genotypes (and potentially read counts in ALLREADS FORMAT field)")
 
     # Options to control the edge length -> # generation scaling factor
-    parser.add_argument("--max_tmrca", required=False, type=int, dest="max_tmrca", default=175000, help="")
-    parser.add_argument("--gen_time",  required=False, type=int, dest="gen_time",  default=30,     help="")
+    parser.add_argument("--max_tmrca", required=False, type=int, dest="max_tmrca", default=175000, help="Maximum TMRCA of tree (years)")
+    parser.add_argument("--gen_time",  required=False, type=int, dest="gen_time",  default=30,     help="Generation time (years)")
 
     # Options used for both the jackknife and simulations
-    parser.add_argument("--nsamp",     required=False, dest="nsamp",     type=int,   default=None, help="")
-    parser.add_argument("--niter",     required=False, dest="niter",     type=int,   default=None, help="")
+    parser.add_argument("--nsamp", required=False, dest="nsamp", type=int, default=None, help="")
+    parser.add_argument("--niter", required=False, dest="niter", type=int, default=None, help="")
 
     # Option to use the read counts in the VCF instead of the genotype posteriors
     # Computes the genotype posteriors using data from the specified stutter model file and the read counts
-    parser.add_argument("--use_read_counts", required=False, dest="use_read_counts", type=str, default=None, help="")
+    parser.add_argument("--use_read_counts",   required=False, dest="use_read_counts", type=str, default=None, help="")
 
-    parser.add_argument("--calc_mut_rates", required=False, action="store_true", default=False, help="")
-    parser.add_argument("--loc_range",      required=False, dest="loc_range", type=str,   default=None, help="")
-    parser.add_argument("--hapgroups",      required=False, dest="hapgroups", type=str,   default=None, help="")
+    # Various analysis options to use REAL STR genotypes to
+    # 1) Estimate stutter models
+    # 2) Estimate mutation rates using all sample
+    # 3) Estimate jackknifed mutation rates
+    calc_stutter_probs_desc = """ Estimate the stutter model for each locus in the VCF using the EM method.
+    Requires a VCF that contains the ALLREADS FORMAT field, which is used to obtain the STR sizes
+    observed in each read"""
+    parser.add_argument("--calc_stutter_probs", required=False, action="store_true",              default=False, help=calc_stutter_probs_desc)
+    parser.add_argument("--calc_mut_rates",     required=False, action="store_true",              default=False, help="")
+    parser.add_argument("--loc_range",          required=False, dest="loc_range",       type=str, default=None,  help="")
 
-    parser.add_argument("--calc_stutter_probs", required=False, action="store_true", default=False, help="")
-
-    parser.add_argument("--jackknife", required=False, action="store_true",   default=False, help="")
-    parser.add_argument("--locus",     required=False, dest="locus", type=str, default=None, help="")
-
-
-
-    parser.add_argument("--plot_ss",           required=False, action="store_true",              default=False,    help="")
-    parser.add_argument("--sim_stutter_em",    required=False, action="store_true",              default=False,    help="Simulates STRs down the phylogeny using the provided mutation model.\nGenerates observed reads for each sample using the read count distributions and the stutter model parameters.\nFinally, estimates the stutter model parameters using the phylogeny and observed reads")
-    parser.add_argument("--sim_and_est",       required=False, action="store_true",              default=False,    help="Performs the same initial procedure as --sim_stutter_em but proceeds by using the specified genotyper,\nphylogeny and observed read counts to estimate the underlying mutation model")
-    parser.add_argument("--mu",                required=False, dest="mu",            type=float, default=None,     help="Mutation rate for simulating STRs (mutations/generation)")
-    parser.add_argument("--beta",              required=False, dest="beta",          type=float, default=None,     help="Length constraint for simulating STRs")
-    parser.add_argument("--pgeom",             required=False, dest="p_geom",        type=float, default=None,     help="Geometric parameter for simulating STRs")
-    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str, default="1,2,3",    help="Categories of observed reads per sample. Default=1,2,3")
-    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str, default="65,25,10", help="Frequency for each observed read count. Default=65,25,10")
-    parser.add_argument("--stutter_geom",      required=False, dest="stutter_geom",  type=float, default=1.0,      help="Geometric parameter for stutter model. Default=1.0")
-    parser.add_argument("--stutter_dec",       required=False, dest="stutter_dec",   type=float, default=0.0,      help="Probability that stutter increases the number of observed repeats in a read. Default=0.0")
-    parser.add_argument("--stutter_inc",       required=False, dest="stutter_inc",   type=float, default=0.0,      help="Probability that stutter decreases the number of observed repeats in a read. Default=0.0")
-    parser.add_argument("--genotyper",         required=False, dest="genotyper",     type=str,   default="EXACT",  help="Genotyper to use to compute STR posteriors from simulated read counts. Options = (EXACT, EXACT_STUTTER, EST_STUTTER, FRACTION). Default = EXACT ")
+    parser.add_argument("--jackknife",          required=False, action="store_true",              default=False, help="")
+    parser.add_argument("--locus",              required=False, dest="locus",           type=str, default=None,  help="")
+    parser.add_argument("--hapgroups",          required=False, dest="hapgroups",       type=str, default=None,  help="")
+    parser.add_argument("--plot_ss",            required=False, action="store_true",              default=False, help="")
     
+    # Options for
+    # 1) Simulating STR genotypes
+    # 2) Simulating observed read counts after stutter distortion
+    # 3) EM stutter model estimation procedure using simulated reads
+    # 4) Mutation rate estimation using simulated reads and different genotypers
+    sim_stutter_em_desc = """Simulates STRs down the phylogeny using the provided mutation model
+    Generates observed reads for each sample using the read count distributions and the stutter model parameters.
+    Estimates the stutter model parameters using the phylogeny and observed reads"""
+    sim_and_est_desc    = """Performs the same initial procedure as --sim_stutter_em.
+    However, it proceeds by using the specified genotyper, phylogeny and
+    observed read counts to estimate the underlying mutation model"""
+    genotyper_desc      = """Genotyper to use to compute STR posteriors from simulated read counts.
+    Options = (EXACT, EXACT_STUTTER, EST_STUTTER, FRACTION). Default = EXACT"""
+    stutter_dec_desc    = "Probability that stutter decreases the number of observed repeats in a read. Default=0.0"
+    stutter_inc_desc    = "Probability that stutter increases the number of observed repeats in a read. Default=0.0"
+    parser.add_argument("--sim_stutter_em",    required=False, action="store_true",              default=False,      help=sim_stutter_em_desc)
+    parser.add_argument("--sim_and_est",       required=False, action="store_true",              default=False,      help=sim_and_est_desc)
+    parser.add_argument("--sim_str_reads",     required=False, action="store_true",              default=False,      help="")
+    parser.add_argument("--mu",                required=False, dest="mu",            type=float, default=None,       help="Mutation rate for simulating STRs (mut/gen)")
+    parser.add_argument("--beta",              required=False, dest="beta",          type=float, default=None,       help="Length constraint for simulating STRs")
+    parser.add_argument("--pgeom",             required=False, dest="p_geom",        type=float, default=None,       help="Geometric parameter for simulating STRs")
+    parser.add_argument("--stutter_geom",      required=False, dest="stutter_geom",  type=float, default=1.0,        help="Geometric parameter for stutter model. Default=1.0")
+    parser.add_argument("--stutter_dec",       required=False, dest="stutter_dec",   type=float, default=0.0,        help=stutter_dec_desc)
+    parser.add_argument("--stutter_inc",       required=False, dest="stutter_inc",   type=float, default=0.0,        help=stutter_inc_desc)
+    parser.add_argument("--genotyper",         required=False, dest="genotyper",     type=str,   default="EXACT",    help=genotyper_desc)
+    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str,   default="1,2,3",    help="Categories of obs. reads per sample. Default=1,2,3")
+    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str,   default="65,25,10", help="Frequency of each obs. read count. Default=65,25,10")
+
     args = parser.parse_args()
     max_tmrca     = args.max_tmrca/args.gen_time # TMRCA of all men in phylogeny (in generations)
     min_node_conf = 0         # Remove nodes with conf < threshold
@@ -470,11 +493,13 @@ def main():
     node_lst         = compute_node_order(tree)
 
     # Determinine tree depth range
-    min_depth,max_depth = tree_depths(tree)
-    print("Minimum tree depth = %f, Maximum tree depth = %f"%(min_depth, max_depth))
+    min_depth,max_depth,median_depth = tree_depths(tree)
+
+    print("Minimum tree depth = %f, Maximum tree depth = %f, Median tree depth = %d"%(min_depth, max_depth, median_depth))
 
     # Calculate conversion from edge length to tmrca
-    len_to_tmrca = max_tmrca/max_depth
+    len_to_tmrca = max_tmrca/median_depth
+    #len_to_tmrca = max_tmrca/max_depth
 
     # Determine maximum edge length
     max_edge_len = max_edge_length(tree)
@@ -661,11 +686,12 @@ def main():
         for i in xrange(args.niter):
             print("Simulating STR genotypes with mu=%f, beta=%f and p=%f, genotyper=%s and stutter model=%s"
                   %(args.mu, args.beta, args.p_geom, genotyper.__str__(), pcr_stutter_model.__str__()))
-            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, 0, 0)
+            root_allele = random.randint(-4, 4)
+            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, min(0, root_allele), max(0, root_allele))
             mut_model = OUGeomSTRMutationModel(args.p_geom, args.mu, args.beta, allele_range)
-            simulated_gts, gt_freqs, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, pcr_stutter_model, 
-                                                                          read_count_dist, genotyper, debug=False, 
-                                                                          valid_samples=valid_samples)
+            simulated_gts, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, pcr_stutter_model,
+                                                                read_count_dist, genotyper, debug=False,
+                                                                valid_samples=valid_samples, root_allele=root_allele)
             print("Done simultating genotypes")
 
             # Output comparison
@@ -711,13 +737,14 @@ def main():
             genotyper        = genotypers.EstStutterGenotyper() # Since we're interested in stutter model estimation, use this genotyper type      
             print("Simulating STR genotypes with mu=%f, beta=%f and p=%f, genotyper=%s and stutter model=%s"
                   %(args.mu, args.beta, args.p_geom, genotyper.__str__(), pcr_stutter_model.__str__()))
-            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, 0, 0)
+            root_allele = random.randint(-4, 4)
+            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, min(0, root_allele), max(0, root_allele))
             mut_model = OUGeomSTRMutationModel(args.p_geom, args.mu, args.beta, allele_range)
             
             # Simulate STRs and their observed reads and estimate the underlying stutter model
-            simulated_read_counts, gt_freqs, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, 
-                                                                                  pcr_stutter_model, read_count_dist, genotyper, 
-                                                                                  debug=False)
+            simulated_read_counts, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp,
+                                                                        pcr_stutter_model, read_count_dist, genotyper,
+                                                                        debug=False, root_allele=root_allele)
 
             # Determine the range of observed STR genotypes
             obs_strs = sorted(list(set(reduce(lambda x,y: x+y, map(lambda x: x.keys(), simulated_read_counts.values())))))
@@ -737,6 +764,30 @@ def main():
             res_out.flush()
             os.fsync(res_out.fileno())
         res_out.close()
-    
+
+    if args.sim_str_reads:
+        check_args(args, ["mu", "beta", "p_geom", "nsamp"], "sim_str_reads")
+
+        # Construct the PCR stutter model
+        pcr_stutter_model = stutter_model.GeomStutterModel(args.stutter_geom, args.stutter_dec, args.stutter_inc, tolerance=10**-6)
+
+        print("Simulating STR genotypes with mu=%f, beta=%f and p=%f and stutter model=%s"
+              %(args.mu, args.beta, args.p_geom, pcr_stutter_model.__str__()))
+        root_allele = random.randint(-4, 4)
+        allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, min(0, root_allele), max(0, root_allele))
+        mut_model = OUGeomSTRMutationModel(args.p_geom, args.mu, args.beta, allele_range)
+
+        genotyper = genotypers.ReadCounter()
+
+        # Simulate STRs and their observed reads and estimate the underlying stutter model
+        simulated_read_counts, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp,
+                                                                    pcr_stutter_model, read_count_dist, genotyper,
+                                                                    debug=False, root_allele=root_allele)
+        output = open(args.out + ".str_reads.txt", "w")
+        for sample in simulated_read_counts:
+            items = sorted(simulated_read_counts[sample].items())
+            output.write("%s\t%s\t%s\n"%(sample, ",".join(map(str, map(lambda x: x[0], items))), ",".join(map(str, map(lambda x:x[1], items)))))
+        output.close()
+
 if __name__ == "__main__":
     main()
