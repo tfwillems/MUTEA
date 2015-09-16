@@ -77,6 +77,12 @@ def read_tree(input_file, min_conf):
     print("# leaves after pruning  = %d"%leaf_count)
     return tree, haplogroups
 
+def num_meioses(tree, len_to_tmrca):
+    sum_len = 0
+    for edge in tree.postorder_edge_iter():
+        sum_len += edge.length
+    return sum_len*len_to_tmrca
+
 
 def max_edge_length(tree):
     max_len = 0
@@ -481,6 +487,14 @@ def main():
     parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str,   default="1,2,3",    help="Categories of obs. reads per sample. Default=1,2,3")
     parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str,   default="65,25,10", help="Frequency of each obs. read count. Default=65,25,10")
 
+    # Options to specify the optimization boundaries for each parameter
+    parser.add_argument("--min_mu",    required=False, dest="min_mu",    type=float, default=0.00001, help="Lower optimization boundary for mu")
+    parser.add_argument("--max_mu",    required=False, dest="max_mu",    type=float, default=0.05,    help="Upper optimization boundary for mu")
+    parser.add_argument("--min_pgeom", required=False, dest="min_pgeom", type=float, default=0.5,     help="Lower optimization boundary for pgeom")
+    parser.add_argument("--max_pgeom", required=False, dest="max_pgeom", type=float, default=1.0,     help="Upper optimization boundary for pgeom")
+    parser.add_argument("--min_beta",  required=False, dest="min_beta",  type=float, default=0.0,     help="Lower optimization boundary for beta")
+    parser.add_argument("--max_beta",  required=False, dest="max_beta",  type=float, default=0.75,    help="Upper optimization boundary for beta")
+
     args = parser.parse_args()
     max_tmrca     = args.max_tmrca/args.gen_time # TMRCA of all men in phylogeny (in generations)
     min_node_conf = 0         # Remove nodes with conf < threshold
@@ -494,8 +508,7 @@ def main():
 
     # Determinine tree depth range
     min_depth,max_depth,median_depth = tree_depths(tree)
-
-    print("Minimum tree depth = %f, Maximum tree depth = %f, Median tree depth = %d"%(min_depth, max_depth, median_depth))
+    print("Minimum tree depth = %f, Maximum tree depth = %f, Median tree depth = %f"%(min_depth, max_depth, median_depth))
 
     # Calculate conversion from edge length to tmrca
     len_to_tmrca = max_tmrca/median_depth
@@ -504,6 +517,9 @@ def main():
     # Determine maximum edge length
     max_edge_len = max_edge_length(tree)
     print("Maximum edge length = %f"%(max_edge_len))
+
+    # Determine number of meioses in phylogeny
+    print("# Meioses = %f"%(num_meioses(tree, len_to_tmrca)))
     
     # If using read counts, read information about the stutter model
     if args.use_read_counts is not None:
@@ -535,9 +551,9 @@ def main():
                 max_str = max(reduce(lambda x,y: x+y, map(lambda x: x.keys(), str_gts.values())))
                 opt_res = optimize_loglikelihood(tree, len_to_tmrca, max_tmrca,
                                                  str_gts, min_str, max_str, node_lst, 
-                                                 min_mu=0.00001, max_mu=0.05, 
-                                                 min_beta=0.0,    max_beta=0.75, 
-                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=3)
+                                                 min_mu=args.min_mu,       max_mu=args.max_mu,
+                                                 min_beta=args.min_beta,   max_beta=args.max_beta,
+                                                 min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom, num_iter=3)
                 output.write("%s\t%f\t%f\t%f\t%f\t%d\t%s\t%d\n"%
                              (locus, opt_res.x[0], opt_res.x[1], opt_res.x[2], 
                               opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(str_gts)))
@@ -573,9 +589,9 @@ def main():
                 print("Estimating mutation parameters for %s using STR gentoypes for %d samples"%(locus, len(str_gts)))
                 opt_res = optimize_loglikelihood(tree, len_to_tmrca, max_tmrca,
                                                  str_gts, min_str, max_str, node_lst, 
-                                                 min_mu=0.00001, max_mu=0.05, 
-                                                 min_beta=0.0,    max_beta=0.75, 
-                                                 min_pgeom=0.5,   max_pgeom=1.0, num_iter=3)
+                                                 min_mu=args.min_mu,       max_mu=args.max_mu,
+                                                 min_beta=args.min_beta,   max_beta=args.max_beta,
+                                                 min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom, num_iter=3)
                 output.write("%s\t%f\t%f\t%f\t%f\t%d\t%s\t%d\n"%
                              (locus, opt_res.x[0], opt_res.x[1], opt_res.x[2], 
                               opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(str_gts)))
@@ -645,9 +661,9 @@ def main():
         run_jackknife_procedure(tree, len_to_tmrca, max_tmrca,
                                 str_gts, min_str, max_str, node_lst,
                                 output_file, sample_size, int(args.niter), args.locus,
-                                min_mu=0.00001, max_mu=0.05, 
-                                min_beta=0.0,   max_beta=0.75, 
-                                min_pgeom=0.5,  max_pgeom=1.0,
+                                min_mu=args.min_mu,       max_mu=args.max_mu,
+                                min_beta=args.min_beta,   max_beta=args.max_beta,
+                                min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom,
                                 max_cycle_per_iter=500)
 
     if args.calc_stutter_probs:
@@ -706,9 +722,9 @@ def main():
                 
                 opt_res = optimize_loglikelihood(tree, len_to_tmrca, max_tmrca,
                                                  simulated_gts,  min_str, max_str, node_lst, 
-                                                 min_mu=0.00001, max_mu=0.05, 
-                                                 min_beta=0.0,   max_beta=0.75, 
-                                                 min_pgeom=0.5,  max_pgeom=1.0, num_iter=3)
+                                                 min_mu=args.min_mu,       max_mu=args.max_mu,
+                                                 min_beta=args.min_beta,   max_beta=args.max_beta,
+                                                 min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom, num_iter=3)
 
                 true_up, true_down, true_pgeom = pcr_stutter_model.get_prob_up(), pcr_stutter_model.get_prob_down(), pcr_stutter_model.get_pgeom()
 
