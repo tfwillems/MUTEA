@@ -172,7 +172,7 @@ class ReadCounter:
         return
 
     def train(self, sample_read_counts, min_allele, max_allele):
-        return
+        return True
 
     def get_genotype_posteriors(self, read_count_dict, true_genotype=None, stutter_model=None):
         return read_count_dict
