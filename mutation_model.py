@@ -30,7 +30,6 @@ class OUGeomSTRMutationModel:
         self.mu             = mu
         self.beta           = beta
         self.p_geom         = p_geom
-        #self.max_step       = max_step
         self.init_transition_matrix()
 
         # Memoized matrix info
