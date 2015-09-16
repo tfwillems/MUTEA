@@ -48,7 +48,7 @@ def subsample_str_gts(str_gts, nsamples):
     return dict(random.sample(str_gts.items(), nsamples))
 
 def simulate(tree, mut_model, len_to_tmrca, nsamples, 
-             stutter_model, read_count_dist, genotyper, debug=False, valid_samples=None):
+             stutter_model, read_count_dist, genotyper, debug=False, valid_samples=None, root_allele=0):
     str_gts, node_gts = {}, {}
     optimizer = matrix_optimizer.MATRIX_OPTIMIZER(mut_model.trans_matrix, mut_model.min_n)
     optimizer.precompute_results()
@@ -58,7 +58,7 @@ def simulate(tree, mut_model, len_to_tmrca, nsamples,
         if debug:
             print("Processing node %s"%(node.oid))
         if node.parent_node is None:
-            node_gts[node.oid] = 0
+            node_gts[node.oid] = root_allele
 
         cur_gt = node_gts[node.oid]
 
@@ -129,7 +129,7 @@ def simulate(tree, mut_model, len_to_tmrca, nsamples,
     # Compute 'central' allele using the allele with the median posterior sum
     gt_counts = collections.defaultdict(int)
     for posteriors in gt_posteriors.values():
-        for gt,prob in  posteriors.items():
+        for gt,prob in posteriors.items():
             gt_counts[gt] += prob
     count_items = sorted(gt_counts.items())
     center      = compute_median(map(lambda x: x[0], count_items), map(lambda x: x[1], count_items))
@@ -143,7 +143,7 @@ def simulate(tree, mut_model, len_to_tmrca, nsamples,
             new_posteriors[gt-center] = prob
         norm_gt_posteriors[sample] = new_posteriors
 
-    return gt_posteriors, gt_freqs, genotyper
+    return norm_gt_posteriors, genotyper
 
 
 
