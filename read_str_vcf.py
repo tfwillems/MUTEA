@@ -148,4 +148,4 @@ def counts_to_centalized_posteriors(sample_read_counts, p_geom, down, up):
         for gt,prob in posteriors.items():
             new_posteriors[gt-center] = prob
         norm_gt_posteriors[sample] = new_posteriors
-    return gt_posteriors,min_allele-center,max_allele-center
+    return norm_gt_posteriors,min_allele-center,max_allele-center
