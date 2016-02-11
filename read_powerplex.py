@@ -13,7 +13,7 @@ def read_genotypes(input_file, conv_to_likelihood=False):
     str_genotypes = dict((marker,{}) for marker in marker_names)
     for line in data:
         tokens = line.strip().split()
-        if len(tokens) != 26:
+        if len(tokens) != len(marker_names)+3:
             if len(tokens) != 0:
                 print("Ignoring calls for %s as it has an unusual number of fields"%tokens[1])
         else:
