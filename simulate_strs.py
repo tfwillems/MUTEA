@@ -48,7 +48,7 @@ def subsample_str_gts(str_gts, nsamples):
     return dict(random.sample(str_gts.items(), nsamples))
 
 def simulate(tree, mut_model, len_to_tmrca, nsamples, 
-             stutter_model, read_count_dist, genotyper, debug=False, valid_samples=None, root_allele=0):
+             stutter_model, read_count_dist, genotyper, debug=False, valid_samples=None, root_allele=0, subset_sizes=None):
     str_gts, node_gts = {}, {}
     optimizer = matrix_optimizer.MATRIX_OPTIMIZER(mut_model.trans_matrix, mut_model.min_n)
     optimizer.precompute_results()
@@ -111,39 +111,66 @@ def simulate(tree, mut_model, len_to_tmrca, nsamples,
             stutter_size = stutter_model.random_stutter_size()
             read_counts[gt+stutter_size] += 1
         sample_read_counts[sample] = read_counts
-        
-    # Use minimum and maximum observed allele sizes
-    min_allele = min(map(lambda x: min(x.keys()), sample_read_counts.values()))
-    max_allele = max(map(lambda x: max(x.keys()), sample_read_counts.values()))
 
-    # Train the genotyper
-    trained = genotyper.train(sample_read_counts, min_allele, max_allele)
-    if not trained:
-        return None, None, genotyper
+    if subset_sizes is None:
+        subset_sizes = [nsamples]
+    if sum(subset_sizes) != nsamples:
+        exit("ERROR: Subset sizes must add up to total number of samples")
 
-    # Compute genotype posteriors using genotyper
-    gt_posteriors = {}
-    for sample,counts in sample_read_counts.items():
-        gt_posteriors[sample] = genotyper.get_genotype_posteriors(counts, str_gts[sample], stutter_model)
+    # Randomly split the samples into separate read count dictionaries for each subset
+    read_counts_by_subset = []
+    for i in xrange(len(subset_sizes)):
+        read_counts_by_subset.append({})
+    sample_order = sample_read_counts.keys()
+    random.shuffle(sample_order)
+    sample_index = 0
+    for i in xrange(len(subset_sizes)):
+        for j in xrange(subset_sizes[i]):
+            read_counts_by_subset[i][sample_order[sample_index]] = sample_read_counts[sample_order[sample_index]]
+            sample_index += 1
 
-    # Compute 'central' allele using the allele with the median posterior sum
-    gt_counts = collections.defaultdict(int)
-    for posteriors in gt_posteriors.values():
-        for gt,prob in posteriors.items():
-            gt_counts[gt] += prob
-    count_items = sorted(gt_counts.items())
-    center      = compute_median(map(lambda x: x[0], count_items), map(lambda x: x[1], count_items))
-    print("CENTRAL ALLELE = %d"%(center))
+    norm_gt_posteriors_by_subset = []
+    for i in xrange(len(subset_sizes)):
+        sample_read_counts = read_counts_by_subset[i]
+
+        # Use minimum and maximum observed allele sizes
+        min_allele = min(map(lambda x: min(x.keys()), sample_read_counts.values()))
+        max_allele = max(map(lambda x: max(x.keys()), sample_read_counts.values()))
+
+        # Train the genotyper
+        trained = genotyper.train(sample_read_counts, min_allele, max_allele)
+        if not trained:
+            return None, genotyper
+
+        # Compute genotype posteriors using genotyper
+        gt_posteriors = {}
+        for sample,counts in sample_read_counts.items():
+            gt_posteriors[sample] = genotyper.get_genotype_posteriors(counts, str_gts[sample], stutter_model)
+
+        # Compute 'central' allele using the allele with the median posterior sum
+        gt_counts = collections.defaultdict(int)
+        for posteriors in gt_posteriors.values():
+            for gt,prob in posteriors.items():
+                gt_counts[gt] += prob
+        count_items = sorted(gt_counts.items())
+        center      = compute_median(map(lambda x: x[0], count_items), map(lambda x: x[1], count_items))
+        print("CENTRAL ALLELE = %d"%(center))
     
-    # Normalize all genotypes relative to this central allele
-    norm_gt_posteriors = {}
-    for sample,posteriors in gt_posteriors.items():
-        new_posteriors = {}
-        for gt,prob in posteriors.items():
-            new_posteriors[gt-center] = prob
-        norm_gt_posteriors[sample] = new_posteriors
+        # Normalize all genotypes relative to this central allele
+        norm_gt_posteriors = {}
+        for sample,posteriors in gt_posteriors.items():
+            new_posteriors = {}
+            for gt,prob in posteriors.items():
+                new_posteriors[gt-center] = prob
+            norm_gt_posteriors[sample] = new_posteriors
+        norm_gt_posteriors_by_subset.append(norm_gt_posteriors)
 
-    return norm_gt_posteriors, genotyper
+    # If there were no subsets to begin with, return the posteriors and genotyper
+    # Otherwise, return the list of posteriors and the genotyper (for consistency)
+    if len(subset_sizes) == 1:
+        return norm_gt_posteriors_by_subset[0], genotyper
+    else:
+        return norm_gt_posteriors_by_subset, genotyper
 
 
 
