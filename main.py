@@ -54,6 +54,7 @@ def read_tree(input_file, min_conf):
         continue
 
     haplogroups       = {}
+    #'''
     haplogroup_counts = {}
     # Remove portion of label describing sample's haplogroup
     for leaf in tree.leaf_nodes():
@@ -64,6 +65,7 @@ def read_tree(input_file, min_conf):
             haplogroup_counts[hapgroup] = 1
         else:
             haplogroup_counts[hapgroup] += 1
+    #'''
 
     # Remove samples with unusual distance from root
     for label in ["HG02982", "HG01890", "HG02040", "HG00628", "NA19384"]:
@@ -80,7 +82,8 @@ def read_tree(input_file, min_conf):
 def num_meioses(tree, len_to_tmrca):
     sum_len = 0
     for edge in tree.postorder_edge_iter():
-        sum_len += edge.length
+        if edge.length is not None:
+            sum_len += edge.length
     return sum_len*len_to_tmrca
 
 
@@ -168,6 +171,7 @@ def determine_allele_range_from_seed(max_tmrca, mu, beta, p_geom,
 
 
 def determine_total_loglikelihood(tree, node_lst, allele_range, mut_model, gt_probs, len_to_tmrca, debug=False):
+    #debug = True
     optimizer = matrix_optimizer.MATRIX_OPTIMIZER(mut_model.trans_matrix, mut_model.min_n)
     optimizer.precompute_results()
         
@@ -456,7 +460,6 @@ def main():
 
     parser.add_argument("--jackknife",          required=False, action="store_true",              default=False, help="")
     parser.add_argument("--locus",              required=False, dest="locus",           type=str, default=None,  help="")
-    parser.add_argument("--hapgroups",          required=False, dest="hapgroups",       type=str, default=None,  help="")
     parser.add_argument("--plot_ss",            required=False, action="store_true",              default=False, help="")
     
     # Options for
@@ -476,6 +479,10 @@ def main():
     stutter_inc_desc    = "Probability that stutter increases the number of observed repeats in a read. Default=0.0"
     parser.add_argument("--sim_stutter_em",    required=False, action="store_true",              default=False,      help=sim_stutter_em_desc)
     parser.add_argument("--sim_and_est",       required=False, action="store_true",              default=False,      help=sim_and_est_desc)
+
+    parser.add_argument("--sim_replication",   required=False, action="store_true",              default=False,      help="")
+    parser.add_argument("--subset_size",       required=False, dest="subset_size",  type=int,    default=None,       help="")
+
     parser.add_argument("--sim_str_reads",     required=False, action="store_true",              default=False,      help="")
     parser.add_argument("--mu",                required=False, dest="mu",            type=float, default=None,       help="Mutation rate for simulating STRs (mut/gen)")
     parser.add_argument("--beta",              required=False, dest="beta",          type=float, default=None,       help="Length constraint for simulating STRs")
@@ -520,21 +527,12 @@ def main():
 
     # Determine number of meioses in phylogeny
     print("# Meioses = %f"%(num_meioses(tree, len_to_tmrca)))
+
+    valid_samples = None
     
     # If using read counts, read information about the stutter model
     if args.use_read_counts is not None:
-        stutter_params = stutter_info.read_stutter_info(args.use_read_counts, min_pgeom=0.7)
-
-    # If a list of haplogroups was supplied, determine the set of valid samples
-    if args.hapgroups is not None:
-        valid_hgroups = set(args.hapgroups.split(","))
-        valid_samples = []
-        for sample,hgroup in haplogroups.items():
-            if hgroup in valid_hgroups:
-                valid_samples.append(sample)
-        valid_samples = set(valid_samples)
-    else:
-        valid_samples = None
+        stutter_params = stutter_info.read_stutter_info(args.use_read_counts, min_pgeom=0.0)
 
     if args.calc_mut_rates:
         if args.powerplex is not None and args.vcf is not None:
@@ -571,7 +569,7 @@ def main():
                 if args.use_read_counts is None:
                     success,str_gts,min_str,max_str,locus = read_str_vcf.get_str_gts(vcf_reader)
                 else:
-                    success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count = read_str_vcf.get_str_read_counts(vcf_reader)
+                    success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count,locus = read_str_vcf.get_str_read_counts(vcf_reader)
                     if not success:
                         break
                     key = chrom + ":" + str(start) + "-" + str(end)
@@ -579,7 +577,6 @@ def main():
                         continue
                     p_geom, down, up = stutter_params[key]["P_GEOM"], stutter_params[key]["DOWN"], stutter_params[key]["UP"]
                     print("Using stutter parameters %f %f %f"%(p_geom, down, up))                    
-                    locus = chrom + ":" + str(start)
                     str_gts,min_str,max_str = read_str_vcf.counts_to_centalized_posteriors(read_count_dict, p_geom, down, up)
 
                 if valid_samples is not None:
@@ -637,7 +634,7 @@ def main():
             if args.use_read_counts is None:
                 success,str_gts,min_str,max_str,locus = read_str_vcf.get_str_gts(vcf_reader)
             else:
-                success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count = read_str_vcf.get_str_read_counts(vcf_reader)
+                success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count,locus = read_str_vcf.get_str_read_counts(vcf_reader)
                 key = chrom + ":" + str(start) + "-" + str(end)
                 if not success:
                     exit("Locus %s not found in provided VCF file. Exiting..."%(args.locus))
@@ -645,7 +642,6 @@ def main():
                     exit("ERROR: No stutter information available for locus %s"%(args.locus))
                 p_geom, down, up = stutter_params[key]["P_GEOM"], stutter_params[key]["DOWN"], stutter_params[key]["UP"]
                 print("Using stutter parameters %f %f %f"%(p_geom, down, up))
-                locus = chrom + ":" + str(start)
                 str_gts,min_str,max_str = read_str_vcf.counts_to_centalized_posteriors(read_count_dict, p_geom, down, up)
 
             if valid_samples is not None:
@@ -660,7 +656,7 @@ def main():
         #with PyCallGraph(output=GraphvizOutput()):
         run_jackknife_procedure(tree, len_to_tmrca, max_tmrca,
                                 str_gts, min_str, max_str, node_lst,
-                                output_file, sample_size, int(args.niter), args.locus,
+                                output_file, sample_size, int(args.niter), locus,
                                 min_mu=args.min_mu,       max_mu=args.max_mu,
                                 min_beta=args.min_beta,   max_beta=args.max_beta,
                                 min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom,
@@ -671,7 +667,7 @@ def main():
         vcf_reader = vcf.Reader(filename=args.vcf)
         res_out    = open(args.out+".stutter_probs.txt", "w")
         while True:
-            success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count = read_str_vcf.get_str_read_counts(vcf_reader)
+            success,chrom,start,end,motif_len,read_count_dict,in_frame_count,out_frame_count,locus = read_str_vcf.get_str_read_counts(vcf_reader)
             if not success:
                 break
 
@@ -708,7 +704,7 @@ def main():
             simulated_gts, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, pcr_stutter_model,
                                                                 read_count_dist, genotyper, debug=False,
                                                                 valid_samples=valid_samples, root_allele=root_allele)
-            print("Done simultating genotypes")
+            print("Done simulating genotypes")
 
             # Output comparison
             if simulated_gts is None:
@@ -737,6 +733,57 @@ def main():
                                opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(simulated_gts), 
                                genotyper.__str__(), true_pgeom, true_down, true_up, est_pgeom, est_down, est_up, 
                                args.read_counts, args.read_percents))
+                res_out.flush()
+                os.fsync(res_out.fileno())
+        res_out.close()
+
+
+    if args.sim_replication:
+        check_args(args, ["mu", "beta", "p_geom", "niter", "nsamp", "subset_size"], "sim_replication")
+        if args.subset_size > args.nsamp:
+            exit("ERROR: Subset size cannot exceed the total number of samples")
+
+        # Construct the PCR stutter model, genotyper and read count distribution
+        subset_sizes      = [args.nsamp-args.subset_size, args.subset_size]
+        pcr_stutter_model = stutter_model.GeomStutterModel(args.stutter_geom, args.stutter_dec, args.stutter_inc, tolerance=10**-6)
+        genotyper         = genotypers.get_genotyper(args.genotyper)
+
+        res_out = open(args.out+".sim_replication.txt", "w")
+        for i in xrange(args.niter):
+            print("Simulating STR genotypes with mu=%f, beta=%f and p=%f, genotyper=%s and stutter model=%s"
+                  %(args.mu, args.beta, args.p_geom, genotyper.__str__(), pcr_stutter_model.__str__()))
+            root_allele = random.randint(-4, 4)
+            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, min(0, root_allele), max(0, root_allele))
+            mut_model = OUGeomSTRMutationModel(args.p_geom, args.mu, args.beta, allele_range)
+            simulated_gt_sets, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, pcr_stutter_model,
+                                                                    read_count_dist, genotyper, debug=False,
+                                                                    valid_samples=valid_samples, root_allele=root_allele, subset_sizes=subset_sizes)
+            print("Done simulating genotypes")
+
+            # Output comparison
+            if simulated_gt_sets is None:
+                res_out.write("%s\n"%(est_stutter.status)) # Stutter estimation failed, so output the reason
+            else:
+                true_up, true_down, true_pgeom = pcr_stutter_model.get_prob_up(), pcr_stutter_model.get_prob_down(), pcr_stutter_model.get_pgeom()
+                res_out.write("%f\t%f\t%f\t%s\t%f\t%f\t%f\t%s\t%s"%
+                              (math.log(args.mu)/math.log(10), args.beta, args.p_geom, genotyper.__str__(), true_pgeom, true_down, true_up,
+                               args.read_counts, args.read_percents))
+
+                for j in xrange(len(subset_sizes)):
+                    # Determine the range of STR genotypes observed
+                    obs_strs = sorted(list(set(reduce(lambda x,y: x+y, map(lambda x: x.keys(), simulated_gt_sets[j].values())))))
+                    min_str  = obs_strs[0]
+                    max_str  = obs_strs[-1]
+                    print(min_str, max_str)
+
+                    opt_res = optimize_loglikelihood(tree, len_to_tmrca, max_tmrca,
+                                                     simulated_gt_sets[j],  min_str, max_str, node_lst,
+                                                     min_mu=args.min_mu,       max_mu=args.max_mu,
+                                                     min_beta=args.min_beta,   max_beta=args.max_beta,
+                                                     min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom, num_iter=3)
+                    res_out.write("\t%f\t%f\t%f\t%f\t%d\t%s\t%d"%
+                                  (opt_res.x[0], opt_res.x[1], opt_res.x[2], opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(simulated_gt_sets[j])))
+                res_out.write("\n")
                 res_out.flush()
                 os.fsync(res_out.fileno())
         res_out.close()
