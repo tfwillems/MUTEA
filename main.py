@@ -9,14 +9,6 @@ import scipy.stats
 import sys
 import vcf
 
-'''
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.colors import LogNorm
-'''
-
 import scipy.optimize
 import argparse
 import os
@@ -53,23 +45,15 @@ def read_tree(input_file, min_conf):
                 tree.prune_subtree(node)
         continue
 
-    haplogroups       = {}
-    #'''
-    haplogroup_counts = {}
-    # Remove portion of label describing sample's haplogroup
+    # Remove portion of label describing sample's haplogroup (if the label contains a space)
     for leaf in tree.leaf_nodes():
-        hapgroup = leaf.taxon.label.split(" ")[1]
-        leaf.taxon.label = leaf.taxon.label.split(" ")[0]
-        haplogroups[leaf.taxon.label] = hapgroup
-        if hapgroup not in haplogroup_counts:
-            haplogroup_counts[hapgroup] = 1
-        else:
-            haplogroup_counts[hapgroup] += 1
-    #'''
+        if " " in leaf.taxon.label:
+            leaf.taxon.label = leaf.taxon.label.split(" ")[0]
 
-    # Remove samples with unusual distance from root
-    for label in ["HG02982", "HG01890", "HG02040", "HG00628", "NA19384"]:
-        tree.prune_subtree(tree.find_node_with_taxon_label(label))
+    # Remove samples with unusual distance from root (if they're in the tree)
+    for label in ["HG02982", "HG01890", "HG02040", "HG00628", "NA19384", "bha"]:
+        if tree.find_node_with_taxon_label(label) is not None:
+            tree.prune_subtree(tree.find_node_with_taxon_label(label))
 
     # Count number of leaves post pruning
     leaf_count = 0
@@ -77,7 +61,7 @@ def read_tree(input_file, min_conf):
         if node.is_leaf():
             leaf_count += 1
     print("# leaves after pruning  = %d"%leaf_count)
-    return tree, haplogroups
+    return tree
 
 def num_meioses(tree, len_to_tmrca):
     sum_len = 0
@@ -440,12 +424,14 @@ def main():
     parser.add_argument("--gen_time",  required=False, type=int, dest="gen_time",  default=30,     help="Generation time (years)")
 
     # Options used for both the jackknife and simulations
-    parser.add_argument("--nsamp", required=False, dest="nsamp", type=int, default=None, help="")
-    parser.add_argument("--niter", required=False, dest="niter", type=int, default=None, help="")
+    parser.add_argument("--nsamp", required=False, dest="nsamp", type=int, default=None, help="Number of samples to simulate or to use in jackknife calculations")
+    parser.add_argument("--niter", required=False, dest="niter", type=int, default=None, help="Number of iterations for simulations or jackknife calculations")
 
     # Option to use the read counts in the VCF instead of the genotype posteriors
     # Computes the genotype posteriors using data from the specified stutter model file and the read counts
-    parser.add_argument("--use_read_counts",   required=False, dest="use_read_counts", type=str, default=None, help="")
+    use_read_count_desc = """Use the read counts in the VCF and the provided stutter model to compute genotype posteriors instead of using genotype likelihoods. 
+    We recommend that you always enable this option when supplying a VCF"""
+    parser.add_argument("--use_read_counts",   required=False, dest="use_read_counts", type=str, default=None, help=use_read_count_desc)
 
     # Various analysis options to use REAL STR genotypes to
     # 1) Estimate stutter models
@@ -455,12 +441,11 @@ def main():
     Requires a VCF that contains the ALLREADS FORMAT field, which is used to obtain the STR sizes
     observed in each read"""
     parser.add_argument("--calc_stutter_probs", required=False, action="store_true",              default=False, help=calc_stutter_probs_desc)
-    parser.add_argument("--calc_mut_rates",     required=False, action="store_true",              default=False, help="")
-    parser.add_argument("--loc_range",          required=False, dest="loc_range",       type=str, default=None,  help="")
+    parser.add_argument("--calc_mut_rates",     required=False, action="store_true",              default=False, help="Calculate mutation rates for all loci in the provided range")
+    parser.add_argument("--loc_range",          required=False, dest="loc_range",       type=str, default=None,  help="Locus range in format chrom:start-stop")
 
-    parser.add_argument("--jackknife",          required=False, action="store_true",              default=False, help="")
-    parser.add_argument("--locus",              required=False, dest="locus",           type=str, default=None,  help="")
-    parser.add_argument("--plot_ss",            required=False, action="store_true",              default=False, help="")
+    parser.add_argument("--jackknife",          required=False, action="store_true",              default=False, help="Estimate mutation rates using a jackknife procedure")
+    parser.add_argument("--locus",              required=False, dest="locus",           type=str, default=None,  help="Name of locus to analyze for jackknife analysis")
     
     # Options for
     # 1) Simulating STR genotypes
@@ -479,11 +464,7 @@ def main():
     stutter_inc_desc    = "Probability that stutter increases the number of observed repeats in a read. Default=0.0"
     parser.add_argument("--sim_stutter_em",    required=False, action="store_true",              default=False,      help=sim_stutter_em_desc)
     parser.add_argument("--sim_and_est",       required=False, action="store_true",              default=False,      help=sim_and_est_desc)
-
-    parser.add_argument("--sim_replication",   required=False, action="store_true",              default=False,      help="")
-    parser.add_argument("--subset_size",       required=False, dest="subset_size",  type=int,    default=None,       help="")
-
-    parser.add_argument("--sim_str_reads",     required=False, action="store_true",              default=False,      help="")
+    parser.add_argument("--sim_str_reads",     required=False, action="store_true",              default=False,      help="Simulate the STR sizes observed in reads")
     parser.add_argument("--mu",                required=False, dest="mu",            type=float, default=None,       help="Mutation rate for simulating STRs (mut/gen)")
     parser.add_argument("--beta",              required=False, dest="beta",          type=float, default=None,       help="Length constraint for simulating STRs")
     parser.add_argument("--pgeom",             required=False, dest="p_geom",        type=float, default=None,       help="Geometric parameter for simulating STRs")
@@ -491,16 +472,16 @@ def main():
     parser.add_argument("--stutter_dec",       required=False, dest="stutter_dec",   type=float, default=0.0,        help=stutter_dec_desc)
     parser.add_argument("--stutter_inc",       required=False, dest="stutter_inc",   type=float, default=0.0,        help=stutter_inc_desc)
     parser.add_argument("--genotyper",         required=False, dest="genotyper",     type=str,   default="EXACT",    help=genotyper_desc)
-    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str,   default="1,2,3",    help="Categories of obs. reads per sample. Default=1,2,3")
-    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str,   default="65,25,10", help="Frequency of each obs. read count. Default=65,25,10")
+    parser.add_argument("--obs_read_counts",   required=False, dest="read_counts",   type=str,   default="1,2,3",    help="Categories of observed reads per sample. Default=1,2,3")
+    parser.add_argument("--obs_read_percents", required=False, dest="read_percents", type=str,   default="65,25,10", help="Frequency of each observed read count. Default=65,25,10")
 
     # Options to specify the optimization boundaries for each parameter
-    parser.add_argument("--min_mu",    required=False, dest="min_mu",    type=float, default=0.00001, help="Lower optimization boundary for mu")
-    parser.add_argument("--max_mu",    required=False, dest="max_mu",    type=float, default=0.05,    help="Upper optimization boundary for mu")
-    parser.add_argument("--min_pgeom", required=False, dest="min_pgeom", type=float, default=0.5,     help="Lower optimization boundary for pgeom")
-    parser.add_argument("--max_pgeom", required=False, dest="max_pgeom", type=float, default=1.0,     help="Upper optimization boundary for pgeom")
-    parser.add_argument("--min_beta",  required=False, dest="min_beta",  type=float, default=0.0,     help="Lower optimization boundary for beta")
-    parser.add_argument("--max_beta",  required=False, dest="max_beta",  type=float, default=0.75,    help="Upper optimization boundary for beta")
+    parser.add_argument("--min_mu",    required=False, dest="min_mu",    type=float, default=0.00001, help="Lower optimization boundary for mu. Default = 0.00001")
+    parser.add_argument("--max_mu",    required=False, dest="max_mu",    type=float, default=0.05,    help="Upper optimization boundary for mu. Default = 0.05")
+    parser.add_argument("--min_pgeom", required=False, dest="min_pgeom", type=float, default=0.5,     help="Lower optimization boundary for pgeom. Default = 0.5")
+    parser.add_argument("--max_pgeom", required=False, dest="max_pgeom", type=float, default=1.0,     help="Upper optimization boundary for pgeom. Default = 1.0")
+    parser.add_argument("--min_beta",  required=False, dest="min_beta",  type=float, default=0.0,     help="Lower optimization boundary for beta.  Default = 0.0")
+    parser.add_argument("--max_beta",  required=False, dest="max_beta",  type=float, default=0.75,    help="Upper optimization boundary for beta.  Default = 0.75")
 
     args = parser.parse_args()
     max_tmrca     = args.max_tmrca/args.gen_time # TMRCA of all men in phylogeny (in generations)
@@ -510,8 +491,8 @@ def main():
     read_count_dist = create_read_count_distribution(args)
 
     # Read and prune tree based on node confidences
-    tree,haplogroups = read_tree(args.tree, min_node_conf)
-    node_lst         = compute_node_order(tree)
+    tree      = read_tree(args.tree, min_node_conf)
+    node_lst  = compute_node_order(tree)
 
     # Determinine tree depth range
     min_depth,max_depth,median_depth = tree_depths(tree)
@@ -597,22 +578,6 @@ def main():
             output.close()
         else:
             exit("ERROR: Either --powerplex or --vcf must be supplied to run the --calc_mut_rates option")
-
-    if args.plot_ss:
-        print("Generating step size distribution plots")
-        pp   = PdfPages(args.out + ".pdf")
-        min_str, max_str = -5, 5
-        mu     = args.mu
-        beta   = args.beta
-        p_geom = args.p_geom                                                                                                                                     
-        for mu in [0.01, 0.001, 0.0001]:
-            for beta in [0, 0.1, 0.25]:
-                for p_geom in [0.5, 0.75, 0.9, 0.95, 0.99, 1.0]:
-                    print("mu=%f, beta=%f, p=%f"%(mu, beta, p_geom))
-                    allele_range, max_step = determine_allele_range(max_tmrca, mu, beta, p_geom, min_str, max_str) 
-                    mut_model = OUGeomSTRMutationModel(p_geom, mu, beta, allele_range)
-                    plot_str_probs(mut_model, 0, [1, 10, 25, 100, 1000, 10000], pp)
-        pp.close()
 
     if args.jackknife:
         check_args(args, ["niter", "locus", "nsamp"], "jackknife")
@@ -737,56 +702,6 @@ def main():
                 os.fsync(res_out.fileno())
         res_out.close()
 
-
-    if args.sim_replication:
-        check_args(args, ["mu", "beta", "p_geom", "niter", "nsamp", "subset_size"], "sim_replication")
-        if args.subset_size > args.nsamp:
-            exit("ERROR: Subset size cannot exceed the total number of samples")
-
-        # Construct the PCR stutter model, genotyper and read count distribution
-        subset_sizes      = [args.nsamp-args.subset_size, args.subset_size]
-        pcr_stutter_model = stutter_model.GeomStutterModel(args.stutter_geom, args.stutter_dec, args.stutter_inc, tolerance=10**-6)
-        genotyper         = genotypers.get_genotyper(args.genotyper)
-
-        res_out = open(args.out+".sim_replication.txt", "w")
-        for i in xrange(args.niter):
-            print("Simulating STR genotypes with mu=%f, beta=%f and p=%f, genotyper=%s and stutter model=%s"
-                  %(args.mu, args.beta, args.p_geom, genotyper.__str__(), pcr_stutter_model.__str__()))
-            root_allele = random.randint(-4, 4)
-            allele_range, max_step = determine_allele_range(max_tmrca, args.mu, args.beta, args.p_geom, min(0, root_allele), max(0, root_allele))
-            mut_model = OUGeomSTRMutationModel(args.p_geom, args.mu, args.beta, allele_range)
-            simulated_gt_sets, est_stutter = simulate_strs.simulate(tree, mut_model, len_to_tmrca, args.nsamp, pcr_stutter_model,
-                                                                    read_count_dist, genotyper, debug=False,
-                                                                    valid_samples=valid_samples, root_allele=root_allele, subset_sizes=subset_sizes)
-            print("Done simulating genotypes")
-
-            # Output comparison
-            if simulated_gt_sets is None:
-                res_out.write("%s\n"%(est_stutter.status)) # Stutter estimation failed, so output the reason
-            else:
-                true_up, true_down, true_pgeom = pcr_stutter_model.get_prob_up(), pcr_stutter_model.get_prob_down(), pcr_stutter_model.get_pgeom()
-                res_out.write("%f\t%f\t%f\t%s\t%f\t%f\t%f\t%s\t%s"%
-                              (math.log(args.mu)/math.log(10), args.beta, args.p_geom, genotyper.__str__(), true_pgeom, true_down, true_up,
-                               args.read_counts, args.read_percents))
-
-                for j in xrange(len(subset_sizes)):
-                    # Determine the range of STR genotypes observed
-                    obs_strs = sorted(list(set(reduce(lambda x,y: x+y, map(lambda x: x.keys(), simulated_gt_sets[j].values())))))
-                    min_str  = obs_strs[0]
-                    max_str  = obs_strs[-1]
-                    print(min_str, max_str)
-
-                    opt_res = optimize_loglikelihood(tree, len_to_tmrca, max_tmrca,
-                                                     simulated_gt_sets[j],  min_str, max_str, node_lst,
-                                                     min_mu=args.min_mu,       max_mu=args.max_mu,
-                                                     min_beta=args.min_beta,   max_beta=args.max_beta,
-                                                     min_pgeom=args.min_pgeom, max_pgeom=args.max_pgeom, num_iter=3)
-                    res_out.write("\t%f\t%f\t%f\t%f\t%d\t%s\t%d"%
-                                  (opt_res.x[0], opt_res.x[1], opt_res.x[2], opt_res.fun, opt_res.nit, opt_res.message.replace(" ", "_"), len(simulated_gt_sets[j])))
-                res_out.write("\n")
-                res_out.flush()
-                os.fsync(res_out.fileno())
-        res_out.close()
 
     if args.sim_stutter_em:
         check_args(args, ["mu", "beta", "p_geom", "niter", "nsamp"], "sim_stutter_em")
